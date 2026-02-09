@@ -22,7 +22,9 @@ export interface User {
   id: string;
   name: string;
   username: string;
+  email?: string;
+  whatsapp?: string;
   password?: string;
   role: UserRole;
-  isApproved?: boolean; // Novo campo para controle de acesso
+  isApproved?: boolean;
 }
