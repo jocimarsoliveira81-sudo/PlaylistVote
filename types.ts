@@ -24,4 +24,5 @@ export interface User {
   username: string;
   password?: string;
   role: UserRole;
+  isApproved?: boolean; // Novo campo para controle de acesso
 }
