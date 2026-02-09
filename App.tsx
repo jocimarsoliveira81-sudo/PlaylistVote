@@ -33,6 +33,7 @@ const App: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [aiInsight, setAiInsight] = useState<string>('');
   const [isLoadingAi, setIsLoadingAi] = useState(false);
+  const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
 
   const [newSong, setNewSong] = useState({ title: '', artist: '', url: '' });
   const [newMember, setNewMember] = useState({ email: '', whatsapp: '', password: '', name: '' });
@@ -82,6 +83,31 @@ const App: React.FC = () => {
     if (savedAuth) setCurrentUser(savedAuth);
     isInitialized.current = true;
   }, []);
+
+  // Auto-fetch YouTube Metadata
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      const videoId = getYoutubeId(newSong.url);
+      if (videoId && !newSong.title) {
+        setIsFetchingMetadata(true);
+        const metadata = await fetchYoutubeMetadata(newSong.url);
+        if (metadata) {
+          setNewSong(prev => ({
+            ...prev,
+            title: metadata.title,
+            artist: metadata.author
+          }));
+        }
+        setIsFetchingMetadata(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      fetchMetadata();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [newSong.url]);
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -161,6 +187,8 @@ const App: React.FC = () => {
 
   const handleAddSong = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newSong.url || !newSong.title) return;
+    
     const created: Song = {
       id: crypto.randomUUID(),
       title: newSong.title,
@@ -339,11 +367,46 @@ const App: React.FC = () => {
 
             {isAdding && isAdmin && (
               <form onSubmit={handleAddSong} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xl grid grid-cols-1 md:grid-cols-3 gap-4 animate-in zoom-in-95">
-                <input type="url" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none" placeholder="Link do YouTube" value={newSong.url} onChange={e => setNewSong({...newSong, url: e.target.value})} />
-                <input type="text" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none" placeholder="Título" value={newSong.title} onChange={e => setNewSong({...newSong, title: e.target.value})} />
+                <div className="relative">
+                  <input 
+                    type="url" 
+                    required 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
+                    placeholder="Cole o link do YouTube aqui" 
+                    value={newSong.url} 
+                    onChange={e => setNewSong({...newSong, url: e.target.value, title: '', artist: ''})} 
+                  />
+                  {isFetchingMetadata && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <i className="fas fa-spinner fa-spin text-indigo-500"></i>
+                    </div>
+                  )}
+                </div>
+                <input 
+                  type="text" 
+                  required 
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
+                  placeholder={isFetchingMetadata ? "Buscando título..." : "Título da Música"} 
+                  value={newSong.title} 
+                  onChange={e => setNewSong({...newSong, title: e.target.value})} 
+                  readOnly={isFetchingMetadata}
+                />
                 <div className="flex gap-2">
-                  <input type="text" className="flex-grow px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none" placeholder="Artista" value={newSong.artist} onChange={e => setNewSong({...newSong, artist: e.target.value})} />
-                  <button type="submit" className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold">Salvar</button>
+                  <input 
+                    type="text" 
+                    className="flex-grow px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
+                    placeholder={isFetchingMetadata ? "Buscando artista..." : "Artista / Ministério"} 
+                    value={newSong.artist} 
+                    onChange={e => setNewSong({...newSong, artist: e.target.value})} 
+                    readOnly={isFetchingMetadata}
+                  />
+                  <button 
+                    type="submit" 
+                    disabled={isFetchingMetadata || !newSong.url || !newSong.title}
+                    className={`bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-all ${isFetchingMetadata || !newSong.url || !newSong.title ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-800'}`}
+                  >
+                    Salvar
+                  </button>
                 </div>
               </form>
             )}
