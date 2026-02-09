@@ -52,7 +52,6 @@ const App: React.FC = () => {
       try {
         const decoded = JSON.parse(atob(inviteData));
         if (decoded.user && decoded.songs) {
-          // Merge users and songs
           const updatedUsers = [...savedUsers];
           if (!updatedUsers.find(u => u.email === decoded.user.email)) {
             updatedUsers.push({ ...decoded.user, isApproved: true });
@@ -65,7 +64,6 @@ const App: React.FC = () => {
           localStorage.setItem(STORAGE_SONGS, JSON.stringify(decoded.songs));
           
           setInviteMessage({ type: 'success', text: 'Acesso aprovado com sucesso! Agora você pode fazer login com seu e-mail e senha.' });
-          // Clean URL
           window.history.replaceState({}, document.title, window.location.pathname);
         }
       } catch (e) {
@@ -104,12 +102,11 @@ const App: React.FC = () => {
 
     const timer = setTimeout(() => {
       fetchMetadata();
-    }, 500);
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [newSong.url]);
 
-  // Sync to LocalStorage
   useEffect(() => {
     if (!isInitialized.current) return;
     localStorage.setItem(STORAGE_SONGS, JSON.stringify(songs));
@@ -168,14 +165,11 @@ const App: React.FC = () => {
   };
 
   const generateInviteLink = (user: User) => {
-    const data = {
-      user: user,
-      songs: songs
-    };
+    const data = { user, songs };
     const encoded = btoa(JSON.stringify(data));
     const link = `${window.location.origin}${window.location.pathname}?invite=${encoded}`;
     navigator.clipboard.writeText(link);
-    alert('Link de acesso copiado! Envie para o membro pelo WhatsApp ou E-mail.');
+    alert('Link de acesso copiado!');
   };
 
   const handleDeleteUser = (id: string) => {
@@ -185,14 +179,33 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddSong = (e: React.FormEvent) => {
+  const handleAddSong = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSong.url || !newSong.title) return;
+    if (!newSong.url) return;
+
+    let finalTitle = newSong.title;
+    let finalArtist = newSong.artist;
+
+    // Se o título estiver vazio, tenta buscar uma última vez (caso o clique tenha sido rápido)
+    if (!finalTitle) {
+      setIsFetchingMetadata(true);
+      const metadata = await fetchYoutubeMetadata(newSong.url);
+      if (metadata) {
+        finalTitle = metadata.title;
+        finalArtist = metadata.author;
+      }
+      setIsFetchingMetadata(false);
+    }
+
+    if (!finalTitle) {
+      alert('Não foi possível identificar o título do vídeo automaticamente. Por favor, preencha manualmente ou verifique o link.');
+      return;
+    }
     
     const created: Song = {
       id: crypto.randomUUID(),
-      title: newSong.title,
-      artist: newSong.artist,
+      title: finalTitle,
+      artist: finalArtist || 'Artista desconhecido',
       youtubeUrl: newSong.url,
       addedAt: Date.now(),
       ratings: []
@@ -281,6 +294,7 @@ const App: React.FC = () => {
 
         {isAdmin && activeTab === 'users' ? (
           <div className="space-y-8 animate-in fade-in duration-500">
+            {/* ... Admin users view remains the same ... */}
             <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm max-w-2xl">
               <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
                 <i className="fas fa-user-plus text-indigo-600"></i> Registrar Novo Membro
@@ -293,7 +307,7 @@ const App: React.FC = () => {
                 <button type="submit" className="md:col-span-2 w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Registrar e Ativar</button>
               </form>
             </div>
-
+            
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
                <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between">
                  <h3 className="font-bold text-slate-800">Equipe Ativa</h3>
@@ -382,14 +396,13 @@ const App: React.FC = () => {
                     </div>
                   )}
                 </div>
+                {/* Removido o 'required' do HTML para deixar o JavaScript cuidar do preenchimento automático sem travas de validação do browser */}
                 <input 
                   type="text" 
-                  required 
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
                   placeholder={isFetchingMetadata ? "Buscando título..." : "Título da Música"} 
                   value={newSong.title} 
                   onChange={e => setNewSong({...newSong, title: e.target.value})} 
-                  readOnly={isFetchingMetadata}
                 />
                 <div className="flex gap-2">
                   <input 
@@ -398,13 +411,13 @@ const App: React.FC = () => {
                     placeholder={isFetchingMetadata ? "Buscando artista..." : "Artista / Ministério"} 
                     value={newSong.artist} 
                     onChange={e => setNewSong({...newSong, artist: e.target.value})} 
-                    readOnly={isFetchingMetadata}
                   />
                   <button 
                     type="submit" 
-                    disabled={isFetchingMetadata || !newSong.url || !newSong.title}
-                    className={`bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-all ${isFetchingMetadata || !newSong.url || !newSong.title ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-800'}`}
+                    disabled={isFetchingMetadata || !newSong.url}
+                    className={`bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-all ${isFetchingMetadata || !newSong.url ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-800'}`}
                   >
+                    {isFetchingMetadata ? <i className="fas fa-spinner fa-spin mr-2"></i> : null}
                     Salvar
                   </button>
                 </div>
