@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Song, UserRole, Rating, User } from './types';
 import { generateSetlistInsight } from './services/geminiService';
-import { calculateAverageRating } from './utils';
+import { calculateAverageRating, fetchYoutubeMetadata, getYoutubeId } from './utils';
 import SongCard from './components/SongCard';
 import Login from './components/Login';
 
@@ -31,6 +31,7 @@ const App: React.FC = () => {
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
   const [newSong, setNewSong] = useState({ title: '', artist: '', url: '' });
+  const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: UserRole.USER });
 
   // Bootstrapping with hydration check
@@ -48,7 +49,7 @@ const App: React.FC = () => {
     isInitialized.current = true;
   }, []);
 
-  // Optimized Sync to LocalStorage (prevents saving empty state on first load)
+  // Optimized Sync to LocalStorage
   useEffect(() => {
     if (!isInitialized.current) return;
     localStorage.setItem(STORAGE_SONGS, JSON.stringify(songs));
@@ -58,6 +59,27 @@ const App: React.FC = () => {
     if (!isInitialized.current) return;
     localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
   }, [users]);
+
+  // Efeito para buscar metadados automaticamente ao colar o link
+  useEffect(() => {
+    const triggerMetadataFetch = async () => {
+      if (newSong.url && getYoutubeId(newSong.url)) {
+        setIsFetchingMetadata(true);
+        const meta = await fetchYoutubeMetadata(newSong.url);
+        if (meta) {
+          setNewSong(prev => ({
+            ...prev,
+            title: meta.title,
+            artist: meta.author
+          }));
+        }
+        setIsFetchingMetadata(false);
+      }
+    };
+
+    const timeoutId = setTimeout(triggerMetadataFetch, 500);
+    return () => clearTimeout(timeoutId);
+  }, [newSong.url]);
 
   const handleLogin = (username: string, password: string) => {
     const user = users.find(u => u.username === username && u.password === password);
@@ -75,11 +97,9 @@ const App: React.FC = () => {
     localStorage.removeItem(STORAGE_AUTH);
   };
 
-  // Memoized Ranking Logic
   const displayedSongs = useMemo(() => {
     const items = [...songs];
     if (currentUser?.role === UserRole.ADMIN) {
-      // Create a map of averages to avoid recalculating in sort O(N log N)
       const avgMap = new Map(items.map(s => [s.id, calculateAverageRating(s.ratings)]));
       
       return items.sort((a, b) => {
@@ -359,34 +379,45 @@ const App: React.FC = () => {
 
             {isAdding && isAdmin && (
               <form onSubmit={handleAddSong} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl grid grid-cols-1 md:grid-cols-12 gap-6 animate-in zoom-in-95 duration-300">
-                <div className="md:col-span-4 space-y-2">
+                <div className="md:col-span-5 space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">URL do YouTube</label>
+                  <div className="relative">
+                    <input 
+                      type="url" required placeholder="Cole o link do vídeo aqui..."
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none pr-12"
+                      value={newSong.url} 
+                      onChange={e => setNewSong({...newSong, url: e.target.value})} 
+                    />
+                    {isFetchingMetadata && (
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                        <i className="fas fa-circle-notch animate-spin text-indigo-500"></i>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="md:col-span-3 space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Título</label>
                   <input 
-                    type="text" required placeholder="Nome da canção"
+                    type="text" required placeholder="Carregando..."
                     className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
                     value={newSong.title} 
                     onChange={e => setNewSong({...newSong, title: e.target.value})} 
                   />
                 </div>
-                <div className="md:col-span-3 space-y-2">
+                <div className="md:col-span-4 space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Artista</label>
-                  <input 
-                    type="text" placeholder="Ministério / Cantor"
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={newSong.artist} 
-                    onChange={e => setNewSong({...newSong, artist: e.target.value})} 
-                  />
-                </div>
-                <div className="md:col-span-5 space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">URL do YouTube</label>
                   <div className="flex gap-3">
                     <input 
-                      type="url" required placeholder="https://youtube.com/..."
+                      type="text" placeholder="Ministério / Cantor"
                       className="flex-grow px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                      value={newSong.url} 
-                      onChange={e => setNewSong({...newSong, url: e.target.value})} 
+                      value={newSong.artist} 
+                      onChange={e => setNewSong({...newSong, artist: e.target.value})} 
                     />
-                    <button type="submit" className="bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-bold hover:bg-black transition-all">
+                    <button 
+                      type="submit" 
+                      disabled={isFetchingMetadata || !newSong.title}
+                      className="bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-bold hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                       Salvar
                     </button>
                   </div>
