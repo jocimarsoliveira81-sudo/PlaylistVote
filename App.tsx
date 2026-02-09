@@ -403,7 +403,7 @@ const App: React.FC = () => {
                 <p className="text-slate-400 mt-2">Peça ao administrador para adicionar novas sugestões.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="flex flex-col gap-6">
                 {displayedSongs.map(song => (
                   <SongCard
                     key={song.id}
