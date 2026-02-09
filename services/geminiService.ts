@@ -3,7 +3,14 @@ import { GoogleGenAI } from "@google/genai";
 import { Song } from "../types";
 
 export const generateSetlistInsight = async (songs: Song[]): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Use the API key from environment variables
+  const apiKey = process.env.API_KEY;
+
+  if (!apiKey) {
+    return "Erro: Chave de API não configurada no ambiente.";
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   
   const songList = songs
     .map(s => `${s.title} (${s.artist}) - Média de Votos: ${
@@ -28,6 +35,6 @@ export const generateSetlistInsight = async (songs: Song[]): Promise<string> => 
     return response.text || "Não foi possível gerar sugestões no momento.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Erro ao conectar com o assistente de IA.";
+    return "Erro ao conectar com o assistente de IA. Verifique se a chave API é válida.";
   }
 };
