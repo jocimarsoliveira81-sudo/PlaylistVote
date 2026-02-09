@@ -38,6 +38,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, error }) => {
                 <input
                   type="text"
                   required
+                  autoCapitalize="none"
                   className="appearance-none relative block w-full px-10 py-3 border border-slate-300 placeholder-slate-400 text-slate-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all bg-slate-50"
                   placeholder="Seu nome de usuário"
                   value={username}
@@ -64,9 +65,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, error }) => {
           </div>
 
           {error && (
-            <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 flex items-center">
-              <i className="fas fa-exclamation-circle mr-2"></i>
-              {error}
+            <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 flex items-start">
+              <i className="fas fa-exclamation-circle mt-1 mr-2 shrink-0"></i>
+              <span className="leading-tight">{error}</span>
             </div>
           )}
 
@@ -80,8 +81,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, error }) => {
           </div>
         </form>
         
-        <div className="mt-6 text-center text-xs text-slate-400">
-          <p>Se você é novo na equipe, solicite seu acesso ao administrador.</p>
+        <div className="mt-8 pt-6 border-t border-slate-100 text-center space-y-4">
+          <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+             <p className="text-[10px] text-amber-700 font-bold uppercase mb-1">Nota Importante:</p>
+             <p className="text-xs text-amber-600 leading-relaxed">
+               Este app utiliza armazenamento local. Você só consegue logar em dispositivos onde o administrador realizou o cadastro.
+             </p>
+          </div>
+          <p className="text-xs text-slate-400 font-medium">Se você é novo, peça ao seu líder para te cadastrar neste aparelho.</p>
         </div>
       </div>
     </div>

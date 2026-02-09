@@ -41,15 +41,25 @@ const App: React.FC = () => {
     const savedAuth = localStorage.getItem(STORAGE_AUTH);
 
     if (savedSongs) setSongs(JSON.parse(savedSongs));
-    if (savedUsers) setUsers(JSON.parse(savedUsers));
-    else setUsers([INITIAL_ADMIN]);
+    
+    if (savedUsers) {
+      const parsedUsers = JSON.parse(savedUsers);
+      // Garantir que o admin inicial sempre exista
+      if (!parsedUsers.find((u: User) => u.username === 'admin')) {
+        setUsers([INITIAL_ADMIN, ...parsedUsers]);
+      } else {
+        setUsers(parsedUsers);
+      }
+    } else {
+      setUsers([INITIAL_ADMIN]);
+    }
 
     if (savedAuth) setCurrentUser(JSON.parse(savedAuth));
     
     isInitialized.current = true;
   }, []);
 
-  // Optimized Sync to LocalStorage
+  // Sync to LocalStorage
   useEffect(() => {
     if (!isInitialized.current) return;
     localStorage.setItem(STORAGE_SONGS, JSON.stringify(songs));
@@ -60,7 +70,7 @@ const App: React.FC = () => {
     localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
   }, [users]);
 
-  // Efeito para buscar metadados automaticamente ao colar o link
+  // Efeito para buscar metadados automaticamente
   useEffect(() => {
     const triggerMetadataFetch = async () => {
       if (newSong.url && getYoutubeId(newSong.url)) {
@@ -82,13 +92,20 @@ const App: React.FC = () => {
   }, [newSong.url]);
 
   const handleLogin = (username: string, password: string) => {
-    const user = users.find(u => u.username === username && u.password === password);
+    const cleanUsername = username.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    const user = users.find(u => 
+      u.username.trim().toLowerCase() === cleanUsername && 
+      u.password === cleanPassword
+    );
+
     if (user) {
       setCurrentUser(user);
       localStorage.setItem(STORAGE_AUTH, JSON.stringify(user));
       setAuthError('');
     } else {
-      setAuthError('Credenciais inválidas. Verifique seu usuário e senha.');
+      setAuthError('Usuário ou senha incorretos. Verifique se o administrador cadastrou seus dados corretamente neste dispositivo.');
     }
   };
 
@@ -101,7 +118,6 @@ const App: React.FC = () => {
     const items = [...songs];
     if (currentUser?.role === UserRole.ADMIN) {
       const avgMap = new Map(items.map(s => [s.id, calculateAverageRating(s.ratings)]));
-      
       return items.sort((a, b) => {
         const ratingA = avgMap.get(a.id) || 0;
         const ratingB = avgMap.get(b.id) || 0;
@@ -132,13 +148,23 @@ const App: React.FC = () => {
 
   const handleRegisterUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (users.find(u => u.username === newUser.username)) {
+    const cleanUsername = newUser.username.trim().toLowerCase();
+    
+    if (users.find(u => u.username.toLowerCase() === cleanUsername)) {
       alert('Este nome de usuário já está em uso pela equipe.');
       return;
     }
-    const created: User = { ...newUser, id: crypto.randomUUID() };
+
+    const created: User = { 
+      ...newUser, 
+      id: crypto.randomUUID(),
+      username: cleanUsername,
+      password: newUser.password?.trim()
+    };
+
     setUsers(prev => [...prev, created]);
     setNewUser({ name: '', username: '', password: '', role: UserRole.USER });
+    alert('Membro cadastrado com sucesso!');
   };
 
   const handleDeleteUser = (id: string) => {
@@ -285,7 +311,7 @@ const App: React.FC = () => {
                       <tr>
                         <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest">Membro</th>
                         <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest">Username</th>
-                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-center">Nível</th>
+                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-center">Senha</th>
                         <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-right">Ação</th>
                       </tr>
                     </thead>
@@ -294,12 +320,13 @@ const App: React.FC = () => {
                         <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-8 py-5">
                             <p className="font-bold text-slate-700">{u.name}</p>
-                          </td>
-                          <td className="px-8 py-5 text-slate-500 font-medium">@{u.username}</td>
-                          <td className="px-8 py-5 text-center">
-                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${u.role === UserRole.ADMIN ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                            <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${u.role === UserRole.ADMIN ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
                               {u.role === UserRole.ADMIN ? 'Admin' : 'Equipe'}
                             </span>
+                          </td>
+                          <td className="px-8 py-5 text-slate-500 font-medium">@{u.username}</td>
+                          <td className="px-8 py-5 text-center font-mono text-xs text-slate-400">
+                            {u.id === INITIAL_ADMIN.id ? '********' : u.password}
                           </td>
                           <td className="px-8 py-5 text-right">
                             {u.id !== INITIAL_ADMIN.id && (
