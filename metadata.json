@@ -1,0 +1,5 @@
+{
+  "name": "Playlist Vote",
+  "description": "Uma plataforma para ministérios de louvor avaliarem e votarem em músicas do YouTube, facilitando a escolha do repertório com base no feedback da equipe.",
+  "requestFramePermissions": []
+}
