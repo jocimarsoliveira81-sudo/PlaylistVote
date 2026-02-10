@@ -278,11 +278,21 @@ const App: React.FC = () => {
 
   const displayedSongs = useMemo(() => {
     let items = [...songs];
-    if (!isAdmin) items = items.filter(s => s.isPublic);
+    
+    // Regra de Negócio: Membros só veem músicas PÚBLICAS e que AINDA NÃO VOTARAM
+    if (!isAdmin) {
+      items = items.filter(s => 
+        s.isPublic && 
+        !s.ratings.some(r => r.userId === currentUser?.id)
+      );
+    }
+
     if (isAdmin) {
+      // Admins veem tudo e ordenado por popularidade
       const avgMap = new Map(items.map(s => [s.id, calculateAverageRating(s.ratings)]));
       return items.sort((a, b) => (avgMap.get(b.id) || 0) - (avgMap.get(a.id) || 0) || b.addedAt - a.addedAt);
     }
+    
     return items.sort((a, b) => b.addedAt - a.addedAt);
   }, [songs, currentUser, isAdmin]);
 
@@ -416,7 +426,7 @@ const App: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-end gap-4">
                <div>
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Votação de Repertório</h2>
-                  <p className="text-slate-500 text-sm">Escute e dê sua nota para as músicas sugeridas.</p>
+                  <p className="text-slate-500 text-sm">{!isAdmin ? 'Músicas que ainda aguardam o seu voto.' : 'Escute e gerencie o repertório sugerido.'}</p>
                </div>
                {isAdmin && (
                  <div className="flex gap-3">
@@ -452,9 +462,13 @@ const App: React.FC = () => {
                  <SongCard key={song.id} song={song} onVote={handleVote} currentUserRating={song.ratings.find(r => r.userId === currentUser.id)?.score} isAdminView={isAdmin} onDelete={(id) => { if(window.confirm('Excluir música?')) setSongs(prev => prev.filter(s => s.id !== id)); }} onToggleVisibility={() => toggleSongPrivacy(song.id)} />
                ))}
                {displayedSongs.length === 0 && (
-                 <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200 flex flex-col items-center">
-                    <i className="fas fa-music text-slate-200 text-5xl mb-4"></i>
-                    <p className="text-slate-400 italic">Nenhuma música disponível. Peça ao diretor para enviar o link!</p>
+                 <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200 flex flex-col items-center animate-in fade-in duration-700">
+                    <i className="fas fa-check-circle text-emerald-100 text-6xl mb-4"></i>
+                    <p className="text-slate-400 font-medium">
+                      {!isAdmin 
+                        ? 'Você já votou em todas as músicas disponíveis! Bom trabalho.' 
+                        : 'Nenhuma música cadastrada no momento.'}
+                    </p>
                  </div>
                )}
             </div>
