@@ -35,7 +35,7 @@ const App: React.FC = () => {
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
 
-  const [newSong, setNewSong] = useState({ title: '', artist: '', url: '' });
+  const [newSong, setNewSong] = useState({ title: '', artist: '', url: '', isPublic: true });
   const [newMember, setNewMember] = useState({ email: '', whatsapp: '', password: '', name: '', role: UserRole.USER });
 
   // Bootstrapping
@@ -101,7 +101,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isInitialized.current) {
       localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
-      // Se o usuário atual teve sua senha mudada, precisamos atualizar o auth no localStorage também
       if (currentUser) {
         const updatedSelf = users.find(u => u.id === currentUser.id);
         if (updatedSelf) localStorage.setItem(STORAGE_AUTH, JSON.stringify(updatedSelf));
@@ -212,11 +211,16 @@ const App: React.FC = () => {
       artist: finalArtist || 'Artista desconhecido',
       youtubeUrl: newSong.url,
       addedAt: Date.now(),
-      ratings: []
+      ratings: [],
+      isPublic: newSong.isPublic
     };
     setSongs(prev => [created, ...prev]);
-    setNewSong({ title: '', artist: '', url: '' });
+    setNewSong({ title: '', artist: '', url: '', isPublic: true });
     setIsAdding(false);
+  };
+
+  const toggleSongPrivacy = (songId: string) => {
+    setSongs(prev => prev.map(s => s.id === songId ? { ...s, isPublic: !s.isPublic } : s));
   };
 
   const handleVote = (songId: string, score: number) => {
@@ -246,13 +250,19 @@ const App: React.FC = () => {
   const isAdmin = currentUser?.role === UserRole.ADMIN;
 
   const displayedSongs = useMemo(() => {
-    const items = [...songs];
+    let items = [...songs];
+    
+    // Membros só veem músicas públicas
+    if (!isAdmin) {
+      items = items.filter(s => s.isPublic);
+    }
+
     if (isAdmin) {
       const avgMap = new Map(items.map(s => [s.id, calculateAverageRating(s.ratings)]));
       return items.sort((a, b) => (avgMap.get(b.id) || 0) - (avgMap.get(a.id) || 0) || b.addedAt - a.addedAt);
     }
     return items.sort((a, b) => b.addedAt - a.addedAt);
-  }, [songs, currentUser]);
+  }, [songs, currentUser, isAdmin]);
 
   if (!currentUser) return (
     <>
@@ -402,14 +412,23 @@ const App: React.FC = () => {
             </div>
 
             {isAdding && isAdmin && (
-              <form onSubmit={handleAddSong} className="bg-white p-6 rounded-3xl border-2 border-indigo-100 shadow-xl grid grid-cols-1 md:grid-cols-3 gap-4 animate-in zoom-in-95">
+              <form onSubmit={handleAddSong} className="bg-white p-6 rounded-3xl border-2 border-indigo-100 shadow-xl grid grid-cols-1 md:grid-cols-4 gap-4 animate-in zoom-in-95">
                 <div className="relative">
                   <input type="url" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Link do YouTube" value={newSong.url} onChange={e => setNewSong({...newSong, url: e.target.value, title: '', artist: ''})} />
                   {isFetchingMetadata && <div className="absolute right-3 top-1/2 -translate-y-1/2"><i className="fas fa-spinner fa-spin text-indigo-500"></i></div>}
                 </div>
                 <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder={isFetchingMetadata ? "Lendo título..." : "Título da Música"} value={newSong.title} onChange={e => setNewSong({...newSong, title: e.target.value})} />
+                <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Artista" value={newSong.artist} onChange={e => setNewSong({...newSong, artist: e.target.value})} />
+                
                 <div className="flex gap-2">
-                  <input type="text" className="flex-grow px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Artista" value={newSong.artist} onChange={e => setNewSong({...newSong, artist: e.target.value})} />
+                  <button 
+                    type="button" 
+                    onClick={() => setNewSong(prev => ({ ...prev, isPublic: !prev.isPublic }))}
+                    className={`flex-grow px-4 py-3 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2 ${newSong.isPublic ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+                  >
+                    <i className={`fas ${newSong.isPublic ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+                    {newSong.isPublic ? 'Pública' : 'Privada'}
+                  </button>
                   <button type="submit" disabled={isFetchingMetadata || !newSong.url} className={`bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-all ${isFetchingMetadata || !newSong.url ? 'opacity-50' : 'hover:bg-slate-800'}`}>Salvar</button>
                 </div>
               </form>
@@ -417,12 +436,20 @@ const App: React.FC = () => {
 
             <div className="grid grid-cols-1 gap-6">
                {displayedSongs.map(song => (
-                 <SongCard key={song.id} song={song} onVote={handleVote} currentUserRating={song.ratings.find(r => r.userId === currentUser.id)?.score} isAdminView={isAdmin} onDelete={(id) => { if(window.confirm('Excluir música?')) setSongs(prev => prev.filter(s => s.id !== id)); }} />
+                 <SongCard 
+                   key={song.id} 
+                   song={song} 
+                   onVote={handleVote} 
+                   currentUserRating={song.ratings.find(r => r.userId === currentUser.id)?.score} 
+                   isAdminView={isAdmin} 
+                   onDelete={(id) => { if(window.confirm('Excluir música?')) setSongs(prev => prev.filter(s => s.id !== id)); }}
+                   onToggleVisibility={() => toggleSongPrivacy(song.id)}
+                 />
                ))}
                {displayedSongs.length === 0 && (
                  <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200 flex flex-col items-center">
                     <i className="fas fa-music text-slate-200 text-5xl mb-4"></i>
-                    <p className="text-slate-400 italic">Nenhuma música disponível. Peça ao diretor para enviar o link da playlist!</p>
+                    <p className="text-slate-400 italic">Nenhuma música disponível. Peça ao diretor para liberar as músicas na playlist!</p>
                  </div>
                )}
             </div>

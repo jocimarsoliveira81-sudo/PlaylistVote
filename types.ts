@@ -11,6 +11,7 @@ export interface Song {
   youtubeUrl: string;
   addedAt: number;
   ratings: Rating[];
+  isPublic: boolean;
 }
 
 export enum UserRole {

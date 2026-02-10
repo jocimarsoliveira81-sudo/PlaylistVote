@@ -10,6 +10,7 @@ interface SongCardProps {
   currentUserRating?: number;
   isAdminView?: boolean;
   onDelete?: (id: string) => void;
+  onToggleVisibility?: (id: string) => void;
 }
 
 const SongCard: React.FC<SongCardProps> = React.memo(({ 
@@ -17,7 +18,8 @@ const SongCard: React.FC<SongCardProps> = React.memo(({
   onVote, 
   currentUserRating, 
   isAdminView = false,
-  onDelete
+  onDelete,
+  onToggleVisibility
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   
@@ -27,9 +29,9 @@ const SongCard: React.FC<SongCardProps> = React.memo(({
   const formattedDate = useMemo(() => new Date(song.addedAt).toLocaleDateString('pt-BR'), [song.addedAt]);
 
   return (
-    <div className="bg-white rounded-3xl shadow-sm overflow-hidden border border-slate-200 transition-all hover:shadow-md hover:border-indigo-200 group flex flex-col md:flex-row items-center p-4 md:p-6 gap-6">
+    <div className={`bg-white rounded-3xl shadow-sm overflow-hidden border transition-all hover:shadow-md group flex flex-col md:flex-row items-center p-4 md:p-6 gap-6 ${song.isPublic ? 'border-slate-200 hover:border-indigo-200' : 'border-slate-100 bg-slate-50/30'}`}>
       
-      {/* Thumbnail Area - Smaller in List View */}
+      {/* Thumbnail Area */}
       <div className="w-full md:w-48 lg:w-64 aspect-video bg-slate-900 relative rounded-2xl overflow-hidden shrink-0 shadow-inner">
         {!isPlaying ? (
           <div className="w-full h-full relative group/player cursor-pointer" onClick={() => setIsPlaying(true)}>
@@ -47,6 +49,11 @@ const SongCard: React.FC<SongCardProps> = React.memo(({
                 <i className="fas fa-play text-sm ml-1"></i>
               </div>
             </div>
+            {isAdminView && (
+              <div className={`absolute top-3 left-3 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${song.isPublic ? 'bg-emerald-500 text-white' : 'bg-slate-600 text-white'}`}>
+                {song.isPublic ? 'Pública' : 'Privada'}
+              </div>
+            )}
           </div>
         ) : (
           <iframe
@@ -64,7 +71,7 @@ const SongCard: React.FC<SongCardProps> = React.memo(({
       <div className="flex-grow flex flex-col lg:flex-row items-start lg:items-center justify-between w-full gap-6">
         <div className="space-y-1 min-w-0 max-w-full">
           <div className="flex items-center gap-2">
-            <h3 className="font-black text-lg text-slate-900 truncate leading-tight group-hover:text-indigo-600 transition-colors">
+            <h3 className={`font-black text-lg truncate leading-tight transition-colors ${song.isPublic ? 'text-slate-900 group-hover:text-indigo-600' : 'text-slate-500'}`}>
               {song.title}
             </h3>
             <span className="hidden sm:inline-block text-[10px] font-bold text-slate-300 uppercase tracking-tighter">
@@ -74,7 +81,7 @@ const SongCard: React.FC<SongCardProps> = React.memo(({
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest truncate">{song.artist}</p>
         </div>
 
-        {/* Stats and Voting in a row */}
+        {/* Stats and Voting Area */}
         <div className="flex flex-wrap items-center gap-4 md:gap-8 w-full lg:w-auto">
           {/* Average Rating */}
           <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 px-4 py-2.5 rounded-2xl">
@@ -104,15 +111,24 @@ const SongCard: React.FC<SongCardProps> = React.memo(({
           </div>
 
           {/* Admin Actions */}
-          {isAdminView && onDelete && (
-            <div className="ml-auto lg:ml-0">
+          {isAdminView && (
+            <div className="ml-auto lg:ml-0 flex items-center gap-2">
               <button 
-                onClick={() => onDelete(song.id)}
-                className="text-slate-300 hover:text-red-500 transition-all p-3 hover:bg-red-50 rounded-2xl group/del"
-                title="Remover música"
+                onClick={() => onToggleVisibility && onToggleVisibility(song.id)}
+                className={`p-3 rounded-2xl transition-all ${song.isPublic ? 'text-emerald-400 hover:bg-emerald-50' : 'text-slate-300 hover:bg-slate-100'}`}
+                title={song.isPublic ? "Tornar Privada" : "Tornar Pública"}
               >
-                <i className="fas fa-trash-alt group-hover/del:scale-110 transition-transform"></i>
+                <i className={`fas ${song.isPublic ? 'fa-eye' : 'fa-eye-slash'}`}></i>
               </button>
+              {onDelete && (
+                <button 
+                  onClick={() => onDelete(song.id)}
+                  className="text-slate-300 hover:text-red-500 transition-all p-3 hover:bg-red-50 rounded-2xl group/del"
+                  title="Remover música"
+                >
+                  <i className="fas fa-trash-alt group-hover/del:scale-110 transition-transform"></i>
+                </button>
+              )}
             </div>
           )}
         </div>
