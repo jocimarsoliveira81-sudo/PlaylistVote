@@ -84,7 +84,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, error }) => {
         <div className="pt-10 text-center border-t border-slate-100">
            <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
              Acesso restrito à equipe de louvor.<br/>
-             <span className="text-slate-300 font-bold uppercase tracking-tighter mt-2 inline-block">v1.1 • Password Secure</span>
+             <span className="text-slate-300 font-bold uppercase tracking-tighter mt-2 inline-block">v1.2 • Password Secure</span>
+             <br/>
+             <span className="text-[8px] text-slate-300 font-medium uppercase tracking-widest mt-1 inline-block opacity-70">
+               Publicado em: 22/05/2024 às 11:45
+             </span>
            </p>
         </div>
       </div>
