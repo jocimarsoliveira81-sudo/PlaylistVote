@@ -26,7 +26,7 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState('');
-  const [inviteMessage, setInviteMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const isInitialized = useRef(false);
   
   const [activeTab, setActiveTab] = useState<'songs' | 'users'>('songs');
@@ -36,50 +36,66 @@ const App: React.FC = () => {
   const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
 
   const [newSong, setNewSong] = useState({ title: '', artist: '', url: '' });
-  const [newMember, setNewMember] = useState({ email: '', whatsapp: '', password: '', name: '' });
+  const [newMember, setNewMember] = useState({ email: '', whatsapp: '', password: '', name: '', role: UserRole.USER });
 
-  // Bootstrapping and Invite Link Handling
+  // Bootstrapping e Captura de Sync via URL
   useEffect(() => {
     const savedSongs = JSON.parse(localStorage.getItem(STORAGE_SONGS) || '[]');
     const savedUsers = JSON.parse(localStorage.getItem(STORAGE_USERS) || '[]');
     const savedAuth = JSON.parse(localStorage.getItem(STORAGE_AUTH) || 'null');
 
-    // Handle Invite Link
     const params = new URLSearchParams(window.location.search);
     const inviteData = params.get('invite');
+    const playlistData = params.get('playlist');
 
+    // 1. Lógica de Convite (Usuário + Músicas)
     if (inviteData) {
       try {
         const decoded = JSON.parse(atob(inviteData));
-        if (decoded.user && decoded.songs) {
+        if (decoded.user) {
           const updatedUsers = [...savedUsers];
           if (!updatedUsers.find(u => u.email === decoded.user.email)) {
             updatedUsers.push({ ...decoded.user, isApproved: true });
           }
-          
           setUsers(updatedUsers.length ? updatedUsers : [INITIAL_ADMIN]);
-          setSongs(decoded.songs);
-          
+          if (decoded.songs) setSongs(decoded.songs);
           localStorage.setItem(STORAGE_USERS, JSON.stringify(updatedUsers));
-          localStorage.setItem(STORAGE_SONGS, JSON.stringify(decoded.songs));
-          
-          setInviteMessage({ type: 'success', text: 'Acesso aprovado com sucesso! Agora você pode fazer login com seu e-mail e senha.' });
-          window.history.replaceState({}, document.title, window.location.pathname);
+          setSyncMessage({ type: 'success', text: 'Acesso configurado! Agora é só entrar.' });
         }
       } catch (e) {
-        setInviteMessage({ type: 'error', text: 'Link de convite inválido ou expirado.' });
+        console.error("Erro no invite:", e);
+      }
+    } 
+    // 2. Lógica de Sincronização de Playlist (Apenas Músicas)
+    else if (playlistData) {
+      try {
+        const decodedSongs: Song[] = JSON.parse(atob(playlistData));
+        // Preserva os votos que o usuário já deu localmente se a música for a mesma
+        const mergedSongs = decodedSongs.map(newS => {
+          const existing = savedSongs.find((s: Song) => s.id === newS.id);
+          return existing ? { ...newS, ratings: [...new Set([...newS.ratings, ...existing.ratings])] } : newS;
+        });
+        setSongs(mergedSongs);
+        setSyncMessage({ type: 'success', text: 'Músicas atualizadas com sucesso!' });
+      } catch (e) {
+        console.error("Erro no sync:", e);
       }
     } else {
       setSongs(savedSongs);
-      if (savedUsers.length === 0 || !savedUsers.find((u: User) => u.email === INITIAL_ADMIN.email)) {
-        setUsers([INITIAL_ADMIN, ...savedUsers]);
-      } else {
-        setUsers(savedUsers);
-      }
     }
+
+    const userList = savedUsers.length === 0 || !savedUsers.find((u: User) => u.email === INITIAL_ADMIN.email) 
+      ? [INITIAL_ADMIN, ...savedUsers] 
+      : savedUsers;
+    setUsers(userList);
 
     if (savedAuth) setCurrentUser(savedAuth);
     isInitialized.current = true;
+
+    // Limpa a URL para não re-sincronizar no refresh
+    if (inviteData || playlistData) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   // Auto-fetch YouTube Metadata
@@ -90,42 +106,27 @@ const App: React.FC = () => {
         setIsFetchingMetadata(true);
         const metadata = await fetchYoutubeMetadata(newSong.url);
         if (metadata) {
-          setNewSong(prev => ({
-            ...prev,
-            title: metadata.title,
-            artist: metadata.author
-          }));
+          setNewSong(prev => ({ ...prev, title: metadata.title, artist: metadata.author }));
         }
         setIsFetchingMetadata(false);
       }
     };
-
-    const timer = setTimeout(() => {
-      fetchMetadata();
-    }, 800);
-
+    const timer = setTimeout(fetchMetadata, 800);
     return () => clearTimeout(timer);
   }, [newSong.url]);
 
   useEffect(() => {
-    if (!isInitialized.current) return;
-    localStorage.setItem(STORAGE_SONGS, JSON.stringify(songs));
+    if (isInitialized.current) localStorage.setItem(STORAGE_SONGS, JSON.stringify(songs));
   }, [songs]);
 
   useEffect(() => {
-    if (!isInitialized.current) return;
-    localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
+    if (isInitialized.current) localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
   }, [users]);
 
   const handleLogin = (email: string, password: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const user = users.find(u => u.email?.trim().toLowerCase() === cleanEmail && u.password === password.trim());
-
     if (user) {
-      if (user.isApproved === false) {
-        setAuthError('Sua conta ainda não foi ativada. Peça ao administrador o link de acesso.');
-        return;
-      }
       setCurrentUser(user);
       localStorage.setItem(STORAGE_AUTH, JSON.stringify(user));
       setAuthError('');
@@ -142,12 +143,10 @@ const App: React.FC = () => {
   const handleRegisterMember = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMember.email || !newMember.password) return;
-
     if (users.find(u => u.email === newMember.email.toLowerCase())) {
-      alert('Este e-mail já está cadastrado.');
+      alert('E-mail já cadastrado.');
       return;
     }
-
     const created: User = {
       id: crypto.randomUUID(),
       name: newMember.name || newMember.email.split('@')[0],
@@ -155,38 +154,20 @@ const App: React.FC = () => {
       email: newMember.email.toLowerCase(),
       whatsapp: newMember.whatsapp,
       password: newMember.password,
-      role: UserRole.USER,
+      role: newMember.role,
       isApproved: true
     };
-
     setUsers(prev => [...prev, created]);
-    setNewMember({ email: '', whatsapp: '', password: '', name: '' });
-    alert('Membro cadastrado! Agora gere o link de acesso para enviar a ele.');
-  };
-
-  const generateInviteLink = (user: User) => {
-    const data = { user, songs };
-    const encoded = btoa(JSON.stringify(data));
-    const link = `${window.location.origin}${window.location.pathname}?invite=${encoded}`;
-    navigator.clipboard.writeText(link);
-    alert('Link de acesso copiado!');
-  };
-
-  const handleDeleteUser = (id: string) => {
-    if (id === INITIAL_ADMIN.id) return;
-    if (window.confirm('Excluir membro?')) {
-      setUsers(prev => prev.filter(u => u.id !== id));
-    }
+    setNewMember({ email: '', whatsapp: '', password: '', name: '', role: UserRole.USER });
+    alert(`Usuário registrado! Gere o link de acesso para ele.`);
   };
 
   const handleAddSong = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSong.url) return;
-
     let finalTitle = newSong.title;
     let finalArtist = newSong.artist;
 
-    // Se o título estiver vazio, tenta buscar uma última vez (caso o clique tenha sido rápido)
     if (!finalTitle) {
       setIsFetchingMetadata(true);
       const metadata = await fetchYoutubeMetadata(newSong.url);
@@ -198,7 +179,7 @@ const App: React.FC = () => {
     }
 
     if (!finalTitle) {
-      alert('Não foi possível identificar o título do vídeo automaticamente. Por favor, preencha manualmente ou verifique o link.');
+      alert('Preencha o título da música.');
       return;
     }
     
@@ -224,45 +205,42 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleGenerateAiInsight = async () => {
-    setIsLoadingAi(true);
-    try {
-      const insight = await generateSetlistInsight(songs);
-      setAiInsight(insight);
-    } catch (e) {
-      setAiInsight('Erro ao gerar sugestão.');
-    } finally {
-      setIsLoadingAi(false);
-    }
+  const publishPlaylist = () => {
+    const encoded = btoa(JSON.stringify(songs));
+    const link = `${window.location.origin}${window.location.pathname}?playlist=${encoded}`;
+    navigator.clipboard.writeText(link);
+    alert('Link da Playlist copiado! Envie este link no grupo para que todos vejam as músicas novas.');
   };
+
+  const generateInviteLink = (user: User) => {
+    const data = { user, songs };
+    const encoded = btoa(JSON.stringify(data));
+    const link = `${window.location.origin}${window.location.pathname}?invite=${encoded}`;
+    navigator.clipboard.writeText(link);
+    alert('Link de acesso completo copiado!');
+  };
+
+  const isAdmin = currentUser?.role === UserRole.ADMIN;
 
   const displayedSongs = useMemo(() => {
     const items = [...songs];
-    if (currentUser?.role === UserRole.ADMIN) {
+    if (isAdmin) {
       const avgMap = new Map(items.map(s => [s.id, calculateAverageRating(s.ratings)]));
       return items.sort((a, b) => (avgMap.get(b.id) || 0) - (avgMap.get(a.id) || 0) || b.addedAt - a.addedAt);
     }
     return items.sort((a, b) => b.addedAt - a.addedAt);
   }, [songs, currentUser]);
 
-  if (!currentUser) {
-    return (
-      <>
-        {inviteMessage && (
-          <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md p-4 rounded-2xl shadow-2xl animate-in slide-in-from-top-10 ${inviteMessage.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
-             <div className="flex items-center gap-3">
-               <i className={`fas ${inviteMessage.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
-               <p className="text-sm font-bold">{inviteMessage.text}</p>
-               <button onClick={() => setInviteMessage(null)} className="ml-auto opacity-70"><i className="fas fa-times"></i></button>
-             </div>
-          </div>
-        )}
-        <Login onLogin={handleLogin} error={authError} />
-      </>
-    );
-  }
-
-  const isAdmin = currentUser.role === UserRole.ADMIN;
+  if (!currentUser) return (
+    <>
+      {syncMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-indigo-600 text-white px-6 py-3 rounded-2xl shadow-2xl font-bold animate-in slide-in-from-top-10">
+          <i className="fas fa-check-circle mr-2"></i> {syncMessage.text}
+        </div>
+      )}
+      <Login onLogin={handleLogin} error={authError} />
+    </>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col antialiased">
@@ -277,48 +255,61 @@ const App: React.FC = () => {
           <div className="flex items-center space-x-4">
             <div className="text-right">
               <p className="text-xs font-bold text-slate-800">{currentUser.name}</p>
-              <p className="text-[9px] text-indigo-500 uppercase font-black">{isAdmin ? 'Diretor' : 'Equipe'}</p>
+              <p className="text-[9px] text-indigo-500 uppercase font-black">{isAdmin ? 'Diretor Musical' : 'Equipe'}</p>
             </div>
-            <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-2"><i className="fas fa-sign-out-alt"></i></button>
+            <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-2 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
           </div>
         </div>
       </header>
 
       <main className="flex-grow max-w-7xl w-full mx-auto px-6 py-10">
+        {syncMessage && (
+          <div className="mb-6 bg-emerald-50 border border-emerald-100 text-emerald-700 px-6 py-4 rounded-2xl flex items-center justify-between">
+            <p className="text-sm font-bold"><i className="fas fa-sync-alt mr-2"></i> {syncMessage.text}</p>
+            <button onClick={() => setSyncMessage(null)} className="opacity-50"><i className="fas fa-times"></i></button>
+          </div>
+        )}
+
         {isAdmin && (
           <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200 w-fit mb-8">
-            <button onClick={() => setActiveTab('songs')} className={`px-6 py-2 rounded-xl text-sm font-bold ${activeTab === 'songs' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>Músicas</button>
-            <button onClick={() => setActiveTab('users')} className={`px-6 py-2 rounded-xl text-sm font-bold ${activeTab === 'users' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>Membros</button>
+            <button onClick={() => setActiveTab('songs')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'songs' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Músicas</button>
+            <button onClick={() => setActiveTab('users')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'users' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Gestão de Equipe</button>
           </div>
         )}
 
         {isAdmin && activeTab === 'users' ? (
           <div className="space-y-8 animate-in fade-in duration-500">
-            {/* ... Admin users view remains the same ... */}
             <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm max-w-2xl">
               <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
-                <i className="fas fa-user-plus text-indigo-600"></i> Registrar Novo Membro
+                <i className="fas fa-user-plus text-indigo-600"></i> Registrar Novo Acesso
               </h3>
               <form onSubmit={handleRegisterMember} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input type="text" placeholder="Nome do Membro" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
+                <input type="text" placeholder="Nome" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} />
                 <input type="email" required placeholder="E-mail" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})} />
                 <input type="tel" placeholder="WhatsApp" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={newMember.whatsapp} onChange={e => setNewMember({...newMember, whatsapp: e.target.value})} />
-                <input type="text" required placeholder="Definir Senha" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={newMember.password} onChange={e => setNewMember({...newMember, password: e.target.value})} />
-                <button type="submit" className="md:col-span-2 w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Registrar e Ativar</button>
+                <input type="text" required placeholder="Senha" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={newMember.password} onChange={e => setNewMember({...newMember, password: e.target.value})} />
+                
+                <div className="md:col-span-2 space-y-2">
+                  <p className="text-[10px] font-black uppercase text-slate-400 ml-1">Tipo de Acesso</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setNewMember({...newMember, role: UserRole.USER})} className={`flex-grow py-3 rounded-xl border font-bold text-sm transition-all ${newMember.role === UserRole.USER ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-500'}`}>Membro</button>
+                    <button type="button" onClick={() => setNewMember({...newMember, role: UserRole.ADMIN})} className={`flex-grow py-3 rounded-xl border font-bold text-sm transition-all ${newMember.role === UserRole.ADMIN ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-500'}`}>Diretor</button>
+                  </div>
+                </div>
+                <button type="submit" className="md:col-span-2 w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Registrar Usuário</button>
               </form>
             </div>
-            
+
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-               <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between">
-                 <h3 className="font-bold text-slate-800">Equipe Ativa</h3>
-                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Total: {users.length}</p>
+               <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                 <h3 className="font-bold text-slate-800">Membros</h3>
                </div>
                <div className="overflow-x-auto">
                  <table className="w-full text-left">
                     <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest">
                       <tr>
                         <th className="px-8 py-4">Membro</th>
-                        <th className="px-8 py-4">Login</th>
+                        <th className="px-8 py-4">Link de Acesso Individual</th>
                         <th className="px-8 py-4 text-right">Ações</th>
                       </tr>
                     </thead>
@@ -326,19 +317,17 @@ const App: React.FC = () => {
                       {users.map(u => (
                         <tr key={u.id} className="hover:bg-slate-50/30 transition-colors">
                           <td className="px-8 py-5">
-                            <p className="font-bold text-slate-700">{u.name}</p>
-                            <p className="text-[11px] text-slate-400">{u.whatsapp || 'Sem WhatsApp'}</p>
+                            <p className="font-bold text-slate-700 flex items-center gap-2">{u.name}</p>
+                            <p className="text-[11px] text-slate-400">{u.email}</p>
                           </td>
                           <td className="px-8 py-5">
-                             <p className="text-sm text-slate-500">{u.email}</p>
-                             <p className="text-[10px] font-mono text-slate-300">Senha: {u.password}</p>
+                            <button onClick={() => generateInviteLink(u)} className="text-xs font-bold text-indigo-600 hover:underline">
+                              <i className="fas fa-copy mr-1"></i> Copiar Link de Boas-vindas
+                            </button>
                           </td>
                           <td className="px-8 py-5 text-right space-x-2">
-                            <button onClick={() => generateInviteLink(u)} className="px-4 py-2 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase rounded-lg hover:bg-indigo-100" title="Gerar Link de Acesso">
-                              <i className="fas fa-link mr-1"></i> Link de Acesso
-                            </button>
                             {u.id !== INITIAL_ADMIN.id && (
-                              <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-slate-300 hover:text-red-500"><i className="fas fa-trash-alt"></i></button>
+                              <button onClick={() => {if(window.confirm('Excluir?')) setUsers(prev => prev.filter(usr => usr.id !== u.id))}} className="p-2 text-slate-300 hover:text-red-500"><i className="fas fa-trash-alt"></i></button>
                             )}
                           </td>
                         </tr>
@@ -352,83 +341,45 @@ const App: React.FC = () => {
           <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row justify-between items-end gap-4">
                <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Votação Semanal</h2>
-                  <p className="text-slate-500 text-sm">Escute e avalie as músicas sugeridas para o repertório.</p>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Votação de Repertório</h2>
+                  <p className="text-slate-500 text-sm">Escute e dê sua nota para as músicas sugeridas.</p>
                </div>
-               <div className="flex gap-3">
-                 {isAdmin && (
-                   <button onClick={handleGenerateAiInsight} disabled={isLoadingAi} className="bg-amber-100 text-amber-700 px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-amber-200 transition-all flex items-center gap-2">
-                     <i className={`fas ${isLoadingAi ? 'fa-spinner fa-spin' : 'fa-sparkles'}`}></i> IA: Sugerir Ordem
-                   </button>
-                 )}
-                 {isAdmin && (
-                   <button onClick={() => setIsAdding(!isAdding)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:bg-indigo-700">
-                     <i className={`fas ${isAdding ? 'fa-times' : 'fa-plus'} mr-2`}></i> {isAdding ? 'Fechar' : 'Nova Música'}
-                   </button>
-                 )}
-               </div>
+               {isAdmin && (
+                 <div className="flex gap-3">
+                    <button onClick={publishPlaylist} className="bg-amber-100 text-amber-700 px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-amber-200 transition-all shadow-md">
+                      <i className="fas fa-share-nodes mr-2"></i> Compartilhar com Equipe
+                    </button>
+                    <button onClick={() => setIsAdding(!isAdding)} className={`px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg transition-all ${isAdding ? 'bg-slate-200 text-slate-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                      <i className={`fas ${isAdding ? 'fa-times' : 'fa-plus'} mr-2`}></i> {isAdding ? 'Cancelar' : 'Nova Música'}
+                    </button>
+                 </div>
+               )}
             </div>
 
-            {aiInsight && (
-              <div className="bg-white p-8 rounded-[2rem] border-2 border-amber-100 shadow-xl shadow-amber-50/50 animate-in slide-in-from-top-4">
-                <div className="flex items-center justify-between mb-4">
-                   <h4 className="font-black text-slate-800 flex items-center gap-2"><i className="fas fa-robot text-amber-500"></i> Sugestão do Assistente</h4>
-                   <button onClick={() => setAiInsight('')} className="text-slate-300 hover:text-slate-500"><i className="fas fa-times"></i></button>
-                </div>
-                <div className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">{aiInsight}</div>
-              </div>
-            )}
-
             {isAdding && isAdmin && (
-              <form onSubmit={handleAddSong} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xl grid grid-cols-1 md:grid-cols-3 gap-4 animate-in zoom-in-95">
+              <form onSubmit={handleAddSong} className="bg-white p-6 rounded-3xl border-2 border-indigo-100 shadow-xl grid grid-cols-1 md:grid-cols-3 gap-4 animate-in zoom-in-95">
                 <div className="relative">
-                  <input 
-                    type="url" 
-                    required 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
-                    placeholder="Cole o link do YouTube aqui" 
-                    value={newSong.url} 
-                    onChange={e => setNewSong({...newSong, url: e.target.value, title: '', artist: ''})} 
-                  />
-                  {isFetchingMetadata && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <i className="fas fa-spinner fa-spin text-indigo-500"></i>
-                    </div>
-                  )}
+                  <input type="url" required className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Link do YouTube" value={newSong.url} onChange={e => setNewSong({...newSong, url: e.target.value, title: '', artist: ''})} />
+                  {isFetchingMetadata && <div className="absolute right-3 top-1/2 -translate-y-1/2"><i className="fas fa-spinner fa-spin text-indigo-500"></i></div>}
                 </div>
-                {/* Removido o 'required' do HTML para deixar o JavaScript cuidar do preenchimento automático sem travas de validação do browser */}
-                <input 
-                  type="text" 
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
-                  placeholder={isFetchingMetadata ? "Buscando título..." : "Título da Música"} 
-                  value={newSong.title} 
-                  onChange={e => setNewSong({...newSong, title: e.target.value})} 
-                />
+                <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder={isFetchingMetadata ? "Lendo título..." : "Título da Música"} value={newSong.title} onChange={e => setNewSong({...newSong, title: e.target.value})} />
                 <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    className="flex-grow px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
-                    placeholder={isFetchingMetadata ? "Buscando artista..." : "Artista / Ministério"} 
-                    value={newSong.artist} 
-                    onChange={e => setNewSong({...newSong, artist: e.target.value})} 
-                  />
-                  <button 
-                    type="submit" 
-                    disabled={isFetchingMetadata || !newSong.url}
-                    className={`bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-all ${isFetchingMetadata || !newSong.url ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-800'}`}
-                  >
-                    {isFetchingMetadata ? <i className="fas fa-spinner fa-spin mr-2"></i> : null}
-                    Salvar
-                  </button>
+                  <input type="text" className="flex-grow px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Artista" value={newSong.artist} onChange={e => setNewSong({...newSong, artist: e.target.value})} />
+                  <button type="submit" disabled={isFetchingMetadata || !newSong.url} className={`bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-all ${isFetchingMetadata || !newSong.url ? 'opacity-50' : 'hover:bg-slate-800'}`}>Salvar</button>
                 </div>
               </form>
             )}
 
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-6">
                {displayedSongs.map(song => (
-                 <SongCard key={song.id} song={song} onVote={handleVote} currentUserRating={song.ratings.find(r => r.userId === currentUser.id)?.score} isAdminView={isAdmin} onDelete={(id) => { if(window.confirm('Excluir?')) setSongs(prev => prev.filter(s => s.id !== id)); }} />
+                 <SongCard key={song.id} song={song} onVote={handleVote} currentUserRating={song.ratings.find(r => r.userId === currentUser.id)?.score} isAdminView={isAdmin} onDelete={(id) => { if(window.confirm('Excluir música?')) setSongs(prev => prev.filter(s => s.id !== id)); }} />
                ))}
-               {displayedSongs.length === 0 && <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200 text-slate-400 italic">Nenhuma música cadastrada.</div>}
+               {displayedSongs.length === 0 && (
+                 <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200 flex flex-col items-center">
+                    <i className="fas fa-music text-slate-200 text-5xl mb-4"></i>
+                    <p className="text-slate-400 italic">Nenhuma música disponível. Peça ao diretor para enviar o link da playlist!</p>
+                 </div>
+               )}
             </div>
           </div>
         )}
