@@ -38,7 +38,7 @@ const App: React.FC = () => {
   const [newSong, setNewSong] = useState({ title: '', artist: '', url: '' });
   const [newMember, setNewMember] = useState({ email: '', whatsapp: '', password: '', name: '', role: UserRole.USER });
 
-  // Bootstrapping e Captura de Sync via URL
+  // Bootstrapping
   useEffect(() => {
     const savedSongs = JSON.parse(localStorage.getItem(STORAGE_SONGS) || '[]');
     const savedUsers = JSON.parse(localStorage.getItem(STORAGE_USERS) || '[]');
@@ -48,7 +48,6 @@ const App: React.FC = () => {
     const inviteData = params.get('invite');
     const playlistData = params.get('playlist');
 
-    // 1. Lógica de Convite (Usuário + Músicas)
     if (inviteData) {
       try {
         const decoded = JSON.parse(atob(inviteData));
@@ -60,23 +59,20 @@ const App: React.FC = () => {
           setUsers(updatedUsers.length ? updatedUsers : [INITIAL_ADMIN]);
           if (decoded.songs) setSongs(decoded.songs);
           localStorage.setItem(STORAGE_USERS, JSON.stringify(updatedUsers));
-          setSyncMessage({ type: 'success', text: 'Acesso configurado! Agora é só entrar.' });
+          setSyncMessage({ type: 'success', text: 'Acesso configurado com sucesso!' });
         }
       } catch (e) {
         console.error("Erro no invite:", e);
       }
-    } 
-    // 2. Lógica de Sincronização de Playlist (Apenas Músicas)
-    else if (playlistData) {
+    } else if (playlistData) {
       try {
         const decodedSongs: Song[] = JSON.parse(atob(playlistData));
-        // Preserva os votos que o usuário já deu localmente se a música for a mesma
         const mergedSongs = decodedSongs.map(newS => {
           const existing = savedSongs.find((s: Song) => s.id === newS.id);
           return existing ? { ...newS, ratings: [...new Set([...newS.ratings, ...existing.ratings])] } : newS;
         });
         setSongs(mergedSongs);
-        setSyncMessage({ type: 'success', text: 'Músicas atualizadas com sucesso!' });
+        setSyncMessage({ type: 'success', text: 'Playlist atualizada!' });
       } catch (e) {
         console.error("Erro no sync:", e);
       }
@@ -92,11 +88,26 @@ const App: React.FC = () => {
     if (savedAuth) setCurrentUser(savedAuth);
     isInitialized.current = true;
 
-    // Limpa a URL para não re-sincronizar no refresh
     if (inviteData || playlistData) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
+
+  // Sync to LocalStorage
+  useEffect(() => {
+    if (isInitialized.current) localStorage.setItem(STORAGE_SONGS, JSON.stringify(songs));
+  }, [songs]);
+
+  useEffect(() => {
+    if (isInitialized.current) {
+      localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
+      // Se o usuário atual teve sua senha mudada, precisamos atualizar o auth no localStorage também
+      if (currentUser) {
+        const updatedSelf = users.find(u => u.id === currentUser.id);
+        if (updatedSelf) localStorage.setItem(STORAGE_AUTH, JSON.stringify(updatedSelf));
+      }
+    }
+  }, [users]);
 
   // Auto-fetch YouTube Metadata
   useEffect(() => {
@@ -115,14 +126,6 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [newSong.url]);
 
-  useEffect(() => {
-    if (isInitialized.current) localStorage.setItem(STORAGE_SONGS, JSON.stringify(songs));
-  }, [songs]);
-
-  useEffect(() => {
-    if (isInitialized.current) localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
-  }, [users]);
-
   const handleLogin = (email: string, password: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const user = users.find(u => u.email?.trim().toLowerCase() === cleanEmail && u.password === password.trim());
@@ -138,6 +141,26 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem(STORAGE_AUTH);
+  };
+
+  const handleResetPassword = (userId: string) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+    
+    const newPass = prompt(`Digite a nova senha para ${user.name}:`);
+    if (newPass && newPass.trim().length > 0) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, password: newPass.trim() } : u));
+      alert('Senha alterada com sucesso!');
+    }
+  };
+
+  const handleSelfChangePassword = () => {
+    if (!currentUser) return;
+    const newPass = prompt('Digite sua nova senha:');
+    if (newPass && newPass.trim().length > 0) {
+      setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, password: newPass.trim() } : u));
+      alert('Sua senha foi alterada. Use a nova senha no próximo acesso.');
+    }
   };
 
   const handleRegisterMember = (e: React.FormEvent) => {
@@ -159,7 +182,7 @@ const App: React.FC = () => {
     };
     setUsers(prev => [...prev, created]);
     setNewMember({ email: '', whatsapp: '', password: '', name: '', role: UserRole.USER });
-    alert(`Usuário registrado! Gere o link de acesso para ele.`);
+    alert(`Usuário registrado!`);
   };
 
   const handleAddSong = async (e: React.FormEvent) => {
@@ -209,7 +232,7 @@ const App: React.FC = () => {
     const encoded = btoa(JSON.stringify(songs));
     const link = `${window.location.origin}${window.location.pathname}?playlist=${encoded}`;
     navigator.clipboard.writeText(link);
-    alert('Link da Playlist copiado! Envie este link no grupo para que todos vejam as músicas novas.');
+    alert('Link da Playlist copiado!');
   };
 
   const generateInviteLink = (user: User) => {
@@ -217,7 +240,7 @@ const App: React.FC = () => {
     const encoded = btoa(JSON.stringify(data));
     const link = `${window.location.origin}${window.location.pathname}?invite=${encoded}`;
     navigator.clipboard.writeText(link);
-    alert('Link de acesso completo copiado!');
+    alert('Link de acesso copiado!');
   };
 
   const isAdmin = currentUser?.role === UserRole.ADMIN;
@@ -253,9 +276,12 @@ const App: React.FC = () => {
             <h1 className="font-bold text-xl text-slate-900 tracking-tight hidden sm:block">Playlist Vote</h1>
           </div>
           <div className="flex items-center space-x-4">
-            <div className="text-right">
-              <p className="text-xs font-bold text-slate-800">{currentUser.name}</p>
+            <div className="text-right group relative cursor-pointer" onClick={handleSelfChangePassword}>
+              <p className="text-xs font-bold text-slate-800 hover:text-indigo-600 transition-colors">{currentUser.name}</p>
               <p className="text-[9px] text-indigo-500 uppercase font-black">{isAdmin ? 'Diretor Musical' : 'Equipe'}</p>
+              <div className="absolute top-full right-0 bg-slate-800 text-white text-[9px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                Clique para mudar sua senha
+              </div>
             </div>
             <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-2 transition-colors"><i className="fas fa-sign-out-alt"></i></button>
           </div>
@@ -309,7 +335,7 @@ const App: React.FC = () => {
                     <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest">
                       <tr>
                         <th className="px-8 py-4">Membro</th>
-                        <th className="px-8 py-4">Link de Acesso Individual</th>
+                        <th className="px-8 py-4">Acesso / Senha</th>
                         <th className="px-8 py-4 text-right">Ações</th>
                       </tr>
                     </thead>
@@ -317,17 +343,36 @@ const App: React.FC = () => {
                       {users.map(u => (
                         <tr key={u.id} className="hover:bg-slate-50/30 transition-colors">
                           <td className="px-8 py-5">
-                            <p className="font-bold text-slate-700 flex items-center gap-2">{u.name}</p>
+                            <p className="font-bold text-slate-700 flex items-center gap-2">
+                              {u.name}
+                              {u.role === UserRole.ADMIN && <span className="text-[8px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-black uppercase">Diretor</span>}
+                            </p>
                             <p className="text-[11px] text-slate-400">{u.email}</p>
                           </td>
                           <td className="px-8 py-5">
-                            <button onClick={() => generateInviteLink(u)} className="text-xs font-bold text-indigo-600 hover:underline">
-                              <i className="fas fa-copy mr-1"></i> Copiar Link de Boas-vindas
-                            </button>
+                            <div className="flex flex-col">
+                              <button onClick={() => generateInviteLink(u)} className="text-[10px] font-bold text-indigo-600 hover:underline text-left mb-1">
+                                <i className="fas fa-link mr-1"></i> Link de Acesso
+                              </button>
+                              <p className="text-[10px] font-mono text-slate-300">Senha: {u.password}</p>
+                            </div>
                           </td>
                           <td className="px-8 py-5 text-right space-x-2">
+                            <button 
+                              onClick={() => handleResetPassword(u.id)} 
+                              className="p-2 text-slate-300 hover:text-indigo-500 transition-colors"
+                              title="Redefinir Senha"
+                            >
+                              <i className="fas fa-key"></i>
+                            </button>
                             {u.id !== INITIAL_ADMIN.id && (
-                              <button onClick={() => {if(window.confirm('Excluir?')) setUsers(prev => prev.filter(usr => usr.id !== u.id))}} className="p-2 text-slate-300 hover:text-red-500"><i className="fas fa-trash-alt"></i></button>
+                              <button 
+                                onClick={() => {if(window.confirm('Excluir membro?')) setUsers(prev => prev.filter(usr => usr.id !== u.id))}} 
+                                className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                                title="Excluir"
+                              >
+                                <i className="fas fa-trash-alt"></i>
+                              </button>
                             )}
                           </td>
                         </tr>

@@ -15,6 +15,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, error }) => {
     onLogin(email, password);
   };
 
+  const handleForgotPassword = (e: React.MouseEvent) => {
+    e.preventDefault();
+    alert('Por questões de segurança, entre em contato com o Diretor Musical do seu ministério para solicitar a redefinição da sua senha.');
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-200">
@@ -52,6 +57,16 @@ const Login: React.FC<LoginProps> = ({ onLogin, error }) => {
             </div>
           </div>
 
+          <div className="flex justify-end">
+            <a 
+              href="#" 
+              onClick={handleForgotPassword}
+              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+            >
+              Esqueceu a senha?
+            </a>
+          </div>
+
           {error && (
             <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-2xl text-[11px] font-bold leading-tight animate-in fade-in zoom-in-95">
               <i className="fas fa-exclamation-triangle mr-2"></i> {error}
@@ -60,7 +75,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, error }) => {
 
           <button 
             type="submit" 
-            className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-0.5 active:translate-y-0 transition-all uppercase tracking-widest text-xs mt-4"
+            className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-0.5 active:translate-y-0 transition-all uppercase tracking-widest text-xs mt-2"
           >
             Entrar no Painel
           </button>
@@ -68,8 +83,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, error }) => {
 
         <div className="pt-10 text-center border-t border-slate-100">
            <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
-             Não tem acesso? Solicite o link ao seu diretor musical.<br/>
-             <span className="text-slate-300 font-bold uppercase tracking-tighter mt-2 inline-block">App Local-First v1.0</span>
+             Acesso restrito à equipe de louvor.<br/>
+             <span className="text-slate-300 font-bold uppercase tracking-tighter mt-2 inline-block">v1.1 • Password Secure</span>
            </p>
         </div>
       </div>
