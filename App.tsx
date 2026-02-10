@@ -219,6 +219,16 @@ const App: React.FC = () => {
   const handleAddSong = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSong.url) return;
+
+    // VALIDAÇÃO DE DUPLICIDADE: Impede que o mesmo vídeo seja adicionado duas vezes
+    const newVideoId = getYoutubeId(newSong.url);
+    const alreadyExists = songs.some(s => getYoutubeId(s.youtubeUrl) === newVideoId);
+    
+    if (alreadyExists) {
+      alert('Esta música já existe na playlist!');
+      return;
+    }
+
     let finalTitle = newSong.title;
     let finalArtist = newSong.artist;
 
